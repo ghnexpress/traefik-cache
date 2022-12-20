@@ -17,5 +17,14 @@ func (r *repoManager) SetExpires(key string, time int64, data model.Cache) error
 		return fmt.Errorf("Set data to redis error: %v", err)
 	}
 
+	// if err = r.db.Set(key, b); err != nil {
+	// 	return fmt.Errorf("Set data to redis error: %v", err)
+	// }
+
+	// var ok bool
+	// if ok, err = r.db.Expire(key, time); err != nil {
+	// 	return fmt.Errorf("Expire data to redis error: %v", err)
+	// }
+
 	return nil
 }

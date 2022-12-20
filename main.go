@@ -2,7 +2,6 @@ package traefik_cache
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -40,7 +39,7 @@ func New(_ context.Context, next http.Handler, config *model.Config, name string
 			Addr:        config.Redis.Address,
 			Db:          0,
 			Password:    config.Redis.Password,
-			MaxPoolSize: 0,
+			MaxPoolSize: 10,
 		})
 
 		cacheRepo = &r
@@ -69,7 +68,6 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if value != nil {
-		os.Stdout.WriteString(fmt.Sprintf("2"))
 		//lodash
 		for key, vals := range value.Headers {
 			for _, val := range vals {
@@ -90,8 +88,6 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	c.next.ServeHTTP(r, req)
 
 	if expiredTime, ok := c.cacheable(req, rw, r.status); ok {
-		os.Stdout.WriteString(fmt.Sprintf("expiredTime: %v\n", time.Unix(expiredTime, 0)))
-
 		err = c.cacheRepo.SetExpires(key, expiredTime, model.Cache{
 			Status:  r.status,
 			Headers: r.Header(),
@@ -99,17 +95,13 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		})
 
 		if err != nil {
-			os.Stdout.WriteString(err.Error())
+			os.Stdout.WriteString(err.Error() + "  1\n")
 		}
 	}
 }
 
 func (c *Cache) cacheable(req *http.Request, rw http.ResponseWriter, status int) (int64, bool) {
 	reasons, _, err := cachecontrol.CachableResponseWriter(req, status, rw, cachecontrol.Options{})
-
-	// os.Stdout.WriteString(fmt.Sprintf("expireBy: %v\n", expireBy))
-	// os.Stdout.WriteString(fmt.Sprintf("reasons: %v\n", reasons))
-	// os.Stdout.WriteString(fmt.Sprintf("err: %v\n", err))
 
 	if err != nil || len(reasons) > 0 {
 		return 0, false

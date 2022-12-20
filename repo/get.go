@@ -7,11 +7,10 @@ import (
 	"github.com/ghnexpress/traefik-cache/model"
 )
 
-func (r *repoManager) Get(key string) (data *model.Cache, err error) {
+func (r *repoManager) Get(key string) (*model.Cache, error) {
 	b, err := r.db.Get(key)
 	if err != nil {
-		err = fmt.Errorf("Get data from redis error: %v", err)
-		return
+		return nil, fmt.Errorf("Get data from redis error: %v", err)
 	}
 
 	if len(b) == 0 {
@@ -19,9 +18,8 @@ func (r *repoManager) Get(key string) (data *model.Cache, err error) {
 	}
 	var d model.Cache
 	if err = json.Unmarshal(b, &d); err != nil {
-		err = fmt.Errorf("Unmarshal cache data error: %v", err)
-		return
+		return nil, fmt.Errorf("Unmarshal cache data error: %v", err)
 	}
 
-	return
+	return &d, nil
 }
