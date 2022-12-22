@@ -9,9 +9,9 @@ import (
 	"github.com/ghnexpress/traefik-cache/constants"
 	"github.com/ghnexpress/traefik-cache/model"
 	"github.com/ghnexpress/traefik-cache/repo"
-
-	"github.com/hoisie/redis"
 	"github.com/pquerna/cachecontrol"
+
+	"github.com/bradfitz/gomemcache/memcache"
 )
 
 var cacheRepo *repo.Repository
@@ -35,13 +35,7 @@ func New(_ context.Context, next http.Handler, config *model.Config, name string
 	// retry
 	// mutex
 	if cacheRepo == nil {
-		r := repo.NewRepoManager(redis.Client{
-			Addr:        config.Redis.Address,
-			Db:          0,
-			Password:    config.Redis.Password,
-			MaxPoolSize: 10,
-		})
-
+		r := repo.NewRepoManager(*memcache.New(config.Memcached.Address))
 		cacheRepo = &r
 	}
 
@@ -88,7 +82,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	c.next.ServeHTTP(r, req)
 
 	if expiredTime, ok := c.cacheable(req, rw, r.status); ok {
-		err = c.cacheRepo.SetExpires(key, expiredTime, model.Cache{
+		err = c.cacheRepo.SetExpires(key, int32(expiredTime), model.Cache{
 			Status:  r.status,
 			Headers: r.Header(),
 			Body:    r.body,

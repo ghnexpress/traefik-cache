@@ -1,19 +1,19 @@
 package repo
 
 import (
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/ghnexpress/traefik-cache/model"
-	"github.com/hoisie/redis"
 )
 
 type Repository interface {
-	SetExpires(string, int64, model.Cache) error
+	SetExpires(string, int32, model.Cache) error
 	Get(string) (*model.Cache, error)
 }
 
 type repoManager struct {
-	db redis.Client
+	db memcache.Client
 }
 
-func NewRepoManager(db redis.Client) Repository {
+func NewRepoManager(db memcache.Client) Repository {
 	return &repoManager{db: db}
 }

@@ -1,12 +1,10 @@
 package model
 
-type RedisConfig struct {
-	Address  string `json:"address,omitempty"`
-	Password string `json:"password,omitempty"`
+type MemcachedConfig struct {
+	Address string `json:"address,omitempty"`
 }
 
 type Config struct {
-	MaxExpiry      int         `json:"maxExpiry" yaml:"maxExpiry" toml:"maxExpiry"`
-	AddCacheStatus bool        `json:"addCacheStatus" yaml:"addCacheStatus" toml:"addCacheStatus"`
-	Redis          RedisConfig `json:"redis,omitempty"`
+	AddCacheStatus bool            `json:"addCacheStatus" yaml:"addCacheStatus" toml:"addCacheStatus"`
+	Memcached      MemcachedConfig `json:"memcached,omitempty"`
 }
