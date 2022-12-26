@@ -15,7 +15,7 @@ func (r *repoManager) Get(key string) (*model.Cache, error) {
 		if err == memcache.ErrCacheMiss {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("Get data from redis error: %v", err)
+		return nil, fmt.Errorf("Get data from memcached error: %v", err)
 	}
 
 	if item == nil || len(item.Value) == 0 {

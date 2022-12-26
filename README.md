@@ -23,15 +23,24 @@ The source code of the plugin should be organized as follows:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
+version: "3.6"
 
 services:
-
+  memcached:
+    image: launcher.gcr.io/google/memcached1
+    container_name: some-memcached
+    ports:
+      - "11211:11211"
+    networks:
+      - traefik-network
   traefik:
-    image: traefik:v2.9
+    image: traefik:v3.0.0-beta1 #v2.9.1
     container_name: traefik
+    depends_on:
+    - memcached
     command:
       # - --log.level=DEBUG
+      - --log.level=INFO
       - --api
       - --api.dashboard
       - --api.insecure=true
@@ -41,22 +50,26 @@ services:
     ports:
       - "80:80"
       - "8080:8080"
+    networks:
+      - traefik-network
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./plugins-local/src/github.com/ghnexpress/traefik-cache:/plugins-local/src/github.com/ghnexpress/traefik-cache
     labels:
-      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.rate=1112
-      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.redis.address=xxx
-      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.redis.password=xxx
-
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.memcached.address=some-memcached:11211
   whoami:
     image: traefik/whoami
     container_name: simple-service
     depends_on:
     - traefik
+    networks:
+      - traefik-network
     labels:
       - traefik.enable=true
       - traefik.http.routers.whoami.rule=Host(`localhost`)
       - traefik.http.routers.whoami.entrypoints=web
       - traefik.http.routers.whoami.middlewares=my-plugindemo
+networks:
+  traefik-network:
+    driver: bridge
 ```

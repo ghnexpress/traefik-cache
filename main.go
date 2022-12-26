@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ghnexpress/traefik-cache/constants"
+	"github.com/ghnexpress/traefik-cache/log"
 	"github.com/ghnexpress/traefik-cache/model"
 	"github.com/ghnexpress/traefik-cache/repo"
 	"github.com/pquerna/cachecontrol"
@@ -32,11 +33,13 @@ type Cache struct {
 }
 
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
-	// retry
-	// mutex
 	if cacheRepo == nil {
-		r := repo.NewRepoManager(*memcache.New(config.Memcached.Address))
-		cacheRepo = &r
+		log.Log("2")
+		os.Stdout.WriteString("text")
+		client := memcache.New(config.Memcached.Address)
+		log.Log("3")
+		repoManager := repo.NewRepoManager(*client)
+		cacheRepo = &repoManager
 	}
 
 	return &Cache{
@@ -58,7 +61,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	value, err := c.cacheRepo.Get(key)
 	if err != nil {
 		cs = constants.ErrorCacheStatus
-		os.Stdout.WriteString(err.Error())
+		log.Log(err.Error())
 	}
 
 	if value != nil {
@@ -89,7 +92,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		})
 
 		if err != nil {
-			os.Stdout.WriteString(err.Error() + "  1\n")
+			log.Log(err.Error())
 		}
 	}
 }

@@ -534,50 +534,50 @@ func scanGetResponseLine(line []byte, it *Item) (size int, err error) {
 
 // Set writes the given item, unconditionally.
 func (c *Client) Set(item *Item) error {
-	return c.onItem(item, (*Client).set)
+	return c.onItem(item, set)
 }
 
-func (c *Client) set(rw *bufio.ReadWriter, item *Item) error {
+func set(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "set", item)
 }
 
 // Add writes the given item, if no value already exists for its
 // key. ErrNotStored is returned if that condition is not met.
 func (c *Client) Add(item *Item) error {
-	return c.onItem(item, (*Client).add)
+	return c.onItem(item, add)
 }
 
-func (c *Client) add(rw *bufio.ReadWriter, item *Item) error {
+func add(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "add", item)
 }
 
 // Replace writes the given item, but only if the server *does*
 // already hold data for this key
 func (c *Client) Replace(item *Item) error {
-	return c.onItem(item, (*Client).replace)
+	return c.onItem(item, replace)
 }
 
-func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
+func replace(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "replace", item)
 }
 
 // Append appends the given item to the existing item, if a value already
 // exists for its key. ErrNotStored is returned if that condition is not met.
 func (c *Client) Append(item *Item) error {
-	return c.onItem(item, (*Client).append)
+	return c.onItem(item, myAppend)
 }
 
-func (c *Client) append(rw *bufio.ReadWriter, item *Item) error {
+func myAppend(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "append", item)
 }
 
 // Prepend prepends the given item to the existing item, if a value already
 // exists for its key. ErrNotStored is returned if that condition is not met.
 func (c *Client) Prepend(item *Item) error {
-	return c.onItem(item, (*Client).prepend)
+	return c.onItem(item, prepend)
 }
 
-func (c *Client) prepend(rw *bufio.ReadWriter, item *Item) error {
+func prepend(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "prepend", item)
 }
 
@@ -589,10 +589,10 @@ func (c *Client) prepend(rw *bufio.ReadWriter, item *Item) error {
 // calls. ErrNotStored is returned if the value was evicted in between
 // the calls.
 func (c *Client) CompareAndSwap(item *Item) error {
-	return c.onItem(item, (*Client).cas)
+	return c.onItem(item, cas)
 }
 
-func (c *Client) cas(rw *bufio.ReadWriter, item *Item) error {
+func cas(c *Client, rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "cas", item)
 }
 
