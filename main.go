@@ -2,8 +2,8 @@ package traefik_cache
 
 import (
 	"context"
+	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/ghnexpress/traefik-cache/constants"
@@ -34,10 +34,7 @@ type Cache struct {
 
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
 	if cacheRepo == nil {
-		log.Log("2")
-		os.Stdout.WriteString("text")
 		client := memcache.New(config.Memcached.Address)
-		log.Log("3")
 		repoManager := repo.NewRepoManager(*client)
 		cacheRepo = &repoManager
 	}
@@ -65,7 +62,6 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if value != nil {
-		//lodash
 		for key, vals := range value.Headers {
 			for _, val := range vals {
 				rw.Header().Add(key, val)
@@ -98,7 +94,9 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Cache) cacheable(req *http.Request, rw http.ResponseWriter, status int) (int64, bool) {
-	reasons, _, err := cachecontrol.CachableResponseWriter(req, status, rw, cachecontrol.Options{})
+	reasons, expiredTime, err := cachecontrol.CachableResponseWriter(req, status, rw, cachecontrol.Options{})
+
+	log.Log(fmt.Sprintf("%d", expiredTime.Unix()))
 
 	if err != nil || len(reasons) > 0 {
 		return 0, false
