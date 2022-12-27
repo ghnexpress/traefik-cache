@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ghnexpress/traefik-cache/constants"
@@ -18,14 +19,20 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
-var cacheRepo *repo.Repository
+var (
+	cacheRepo          *repo.Repository
+	ignoreHeaderFields = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
+)
 
 const cacheHeader = "Cache-Status"
 
 func CreateConfig() *model.Config {
 	return &model.Config{
+		Memcached: model.MemcachedConfig{},
 		HashKey: model.HashKey{
-			Method: true,
+			Method: model.Enable{
+				Enable: true,
+			},
 		},
 	}
 }
@@ -38,6 +45,8 @@ type Cache struct {
 }
 
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
+	log.Log(fmt.Sprintf("config: %+v", *config))
+
 	if cacheRepo == nil {
 		client := memcache.New(config.Memcached.Address)
 		repoManager := repo.NewRepoManager(*client)
@@ -56,24 +65,28 @@ func (c *Cache) key(r *http.Request) string {
 	hashKey := c.config.HashKey
 
 	hMethod := ""
-	if hashKey.Method {
+	if hashKey.Method.Enable {
 		hMethod = r.Method
 	}
 
 	hHeader := ""
-	if hashKey.Header && r.Header != nil {
+	if hashKey.Header.Enable && r.Header != nil {
 		h := r.Header.Clone()
 
-		h.Del("X-Request-Id")
-		h.Del("Postman-Token")
-		h.Del("Content-Length")
+		if hashKey.Header.IgnoreFields != "" {
+			ignoreHeaderFields = strings.Split(hashKey.Header.IgnoreFields, ",")
+		}
+
+		for _, field := range ignoreHeaderFields {
+			h.Del(field)
+		}
 
 		hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", h)))
 		log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", h)))
 	}
 
 	hBody := ""
-	if hashKey.Body && r.Body != nil {
+	if hashKey.Body.Enable && r.Body != nil {
 		bodyBytes, _ := ioutil.ReadAll(r.Body)
 		r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 
