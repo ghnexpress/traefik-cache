@@ -1,8 +1,10 @@
 package traefik_cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/ghnexpress/traefik-cache/log"
 	"github.com/ghnexpress/traefik-cache/model"
 	"github.com/ghnexpress/traefik-cache/repo"
+	"github.com/ghnexpress/traefik-cache/utils"
 	"github.com/pquerna/cachecontrol"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -21,7 +24,9 @@ const cacheHeader = "Cache-Status"
 
 func CreateConfig() *model.Config {
 	return &model.Config{
-		AddCacheStatus: true,
+		HashKey: model.HashKey{
+			Method: true,
+		},
 	}
 }
 
@@ -47,12 +52,43 @@ func New(_ context.Context, next http.Handler, config *model.Config, name string
 	}, nil
 }
 
-func cacheKey(r *http.Request) string {
-	return r.Method + r.Host + r.URL.Path
+func (c *Cache) key(r *http.Request) string {
+	hashKey := c.config.HashKey
+
+	hMethod := ""
+	if hashKey.Method {
+		hMethod = r.Method
+	}
+
+	hHeader := ""
+	if hashKey.Header && r.Header != nil {
+		h := r.Header.Clone()
+
+		h.Del("X-Request-Id")
+		h.Del("Postman-Token")
+		h.Del("Content-Length")
+
+		hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", h)))
+		log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", h)))
+	}
+
+	hBody := ""
+	if hashKey.Body && r.Body != nil {
+		bodyBytes, _ := ioutil.ReadAll(r.Body)
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		hBody = utils.GetMD5Hash(bodyBytes)
+		log.Log(fmt.Sprintf("body: %s", bodyBytes))
+	}
+
+	key := fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody)
+	log.Log(key)
+
+	return key
 }
 
 func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	key := cacheKey(req)
+	key := c.key(req)
 	cs := constants.MissCacheStatus
 
 	value, err := c.cacheRepo.Get(key)
@@ -81,7 +117,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	c.next.ServeHTTP(r, req)
 
 	if expiredTime, ok := c.cacheable(req, rw, r.status); ok {
-		err = c.cacheRepo.SetExpires(key, int32(expiredTime), model.Cache{
+		err = c.cacheRepo.SetExpires(key, expiredTime, model.Cache{
 			Status:  r.status,
 			Headers: r.Header(),
 			Body:    r.body,
@@ -93,14 +129,12 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Cache) cacheable(req *http.Request, rw http.ResponseWriter, status int) (int64, bool) {
+func (c *Cache) cacheable(req *http.Request, rw http.ResponseWriter, status int) (time.Time, bool) {
 	reasons, expiredTime, err := cachecontrol.CachableResponseWriter(req, status, rw, cachecontrol.Options{})
 
-	log.Log(fmt.Sprintf("%d", expiredTime.Unix()))
-
-	if err != nil || len(reasons) > 0 {
-		return 0, false
+	if err != nil || len(reasons) > 0 || expiredTime.Before(time.Now()) {
+		return time.Time{}, false
 	}
 
-	return time.Now().Unix() + 100, true
+	return expiredTime, true
 }

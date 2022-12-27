@@ -4,7 +4,13 @@ type MemcachedConfig struct {
 	Address string `json:"address,omitempty"`
 }
 
+type HashKey struct {
+	Method bool `json:"method,omitempty"`
+	Header bool `json:"header,omitempty"`
+	Body   bool `json:"body,omitempty"`
+}
+
 type Config struct {
-	AddCacheStatus bool            `json:"addCacheStatus" yaml:"addCacheStatus" toml:"addCacheStatus"`
-	Memcached      MemcachedConfig `json:"memcached,omitempty"`
+	Memcached MemcachedConfig `json:"memcached,omitempty"`
+	HashKey   HashKey         `json:"hashkey,omitempty"`
 }
