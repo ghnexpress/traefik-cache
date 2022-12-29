@@ -19,7 +19,17 @@ type HashKey struct {
 	Body   Enable        `json:"body,omitempty"`
 }
 
+type TelegramConfig struct {
+	ChatID string `json:"chatId,omitempty"`
+	Token  string `json:"token,omitempty"`
+}
+
+type AlertConfig struct {
+	Telegram *TelegramConfig `json:"telegram,omitempty"`
+}
+
 type Config struct {
 	Memcached MemcachedConfig `json:"memcached,omitempty"`
 	HashKey   HashKey         `json:"hashkey,omitempty"`
+	Alert     AlertConfig     `json:"alert,omitempty"`
 }

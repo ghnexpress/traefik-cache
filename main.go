@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -95,9 +97,23 @@ func (c *Cache) key(r *http.Request) string {
 	}
 
 	key := fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody)
-	log.Log(key)
 
 	return key
+}
+
+func (c *Cache) logError(err error) {
+	if c.config.Alert.Telegram != nil {
+		telegram := c.config.Alert.Telegram
+
+		params := url.Values{}
+		params.Add("chat_id", telegram.ChatID)
+		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin] \n%s", os.Getenv("APPLICATION_ENV"), err.Error()))
+		params.Add("parse_mode", "HTML")
+
+		http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
+	}
+
+	log.Log(err.Error())
 }
 
 func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -107,7 +123,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	value, err := c.cacheRepo.Get(key)
 	if err != nil {
 		cs = constants.ErrorCacheStatus
-		log.Log(err.Error())
+		c.logError(err)
 	}
 
 	if value != nil {
@@ -118,6 +134,8 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		rw.Header().Set(cacheHeader, string(constants.HitCacheStatus))
+		rw.Header().Set("debug", fmt.Sprintf("time: %s", time.Now().String()))
+
 		rw.WriteHeader(value.Status)
 		_, err = rw.Write(value.Body)
 		return
@@ -137,7 +155,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		})
 
 		if err != nil {
-			log.Log(err.Error())
+			c.logError(err)
 		}
 	}
 }
