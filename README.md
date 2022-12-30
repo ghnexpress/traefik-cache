@@ -34,13 +34,12 @@ services:
     networks:
       - traefik-network
   traefik:
-    image: traefik:v3.0.0-beta1 #v2.9.1
+    image: traefik:v2.9.6 #v3.0.0-beta2
     container_name: traefik
     depends_on:
     - memcached
     command:
       # - --log.level=DEBUG
-      - --log.level=INFO
       - --api
       - --api.dashboard
       - --api.insecure=true
@@ -56,7 +55,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./plugins-local/src/github.com/ghnexpress/traefik-cache:/plugins-local/src/github.com/ghnexpress/traefik-cache
     labels:
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.hashkey.header.enable=true
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.hashkey.header.fields=Token,User-Agent
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.hashkey.header.ignoreFields=X-Request-Id,Postman-Token,Content-Length
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.hashkey.body.enable=false
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.hashkey.method.enable=true
       - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.memcached.address=some-memcached:11211
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.alert.telegram.chatId=-795576798
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.alert.telegram.token=xxx
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.env=dev
   whoami:
     image: traefik/whoami
     container_name: simple-service
@@ -73,3 +80,34 @@ networks:
   traefik-network:
     driver: bridge
 ```
+
+### K8s
+
+```yaml
+# cache-middleware.yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  annotations: {}
+  name: ghn-cache
+  namespace: default
+spec:
+  plugin:
+    plugin-cache:
+      memcached:
+        address: xxx:11211
+      hashkey:
+        body:
+          enable: true
+        header:
+          enable: true
+          fields: Token,User-Agent
+          ignoreFields: X-Request-Id,Postman-Token,Content-Length
+        method:
+          enable: true
+      alert:
+        telegram:
+          chatId: -795576798
+          token: xxx
+```
+

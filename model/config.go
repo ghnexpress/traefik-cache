@@ -10,6 +10,7 @@ type Enable struct {
 
 type HeaderHashKey struct {
 	Enable       bool   `json:"enable,omitempty"`
+	Fields       string `json:"fields,omitempty"`
 	IgnoreFields string `json:"ignoreFields,omitempty"`
 }
 
@@ -32,4 +33,5 @@ type Config struct {
 	Memcached MemcachedConfig `json:"memcached,omitempty"`
 	HashKey   HashKey         `json:"hashkey,omitempty"`
 	Alert     AlertConfig     `json:"alert,omitempty"`
+	ENV       string          `json:"env,omitempty"`
 }

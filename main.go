@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -26,7 +25,10 @@ var (
 	ignoreHeaderFields = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
 )
 
-const cacheHeader = "Cache-Status"
+const (
+	CACHE_HEADER = "Cache-Status"
+	MASTER_ENV   = "master"
+)
 
 func CreateConfig() *model.Config {
 	return &model.Config{
@@ -36,6 +38,7 @@ func CreateConfig() *model.Config {
 				Enable: true,
 			},
 		},
+		ENV: MASTER_ENV,
 	}
 }
 
@@ -63,7 +66,7 @@ func New(_ context.Context, next http.Handler, config *model.Config, name string
 	}, nil
 }
 
-func (c *Cache) key(r *http.Request) string {
+func (c *Cache) key(r *http.Request) (string, error) {
 	hashKey := c.config.HashKey
 
 	hMethod := ""
@@ -75,30 +78,44 @@ func (c *Cache) key(r *http.Request) string {
 	if hashKey.Header.Enable && r.Header != nil {
 		h := r.Header.Clone()
 
-		if hashKey.Header.IgnoreFields != "" {
-			ignoreHeaderFields = strings.Split(hashKey.Header.IgnoreFields, ",")
-		}
+		if hashKey.Header.Fields != "" {
+			rawHeader := ""
+			headerFields := strings.Split(hashKey.Header.Fields, ",")
+			for _, field := range headerFields {
+				rawHeader = fmt.Sprintf("%s|%s", rawHeader, h.Get(field))
+			}
 
-		for _, field := range ignoreHeaderFields {
-			h.Del(field)
-		}
+			hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", rawHeader)))
+			log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", rawHeader)))
+		} else {
+			if hashKey.Header.IgnoreFields != "" {
+				ignoreHeaderFields = strings.Split(hashKey.Header.IgnoreFields, ",")
+			}
 
-		hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", h)))
-		log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", h)))
+			for _, field := range ignoreHeaderFields {
+				h.Del(field)
+			}
+
+			hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", h)))
+			log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", h)))
+		}
 	}
 
 	hBody := ""
 	if hashKey.Body.Enable && r.Body != nil {
-		bodyBytes, _ := ioutil.ReadAll(r.Body)
-		r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return "", err
+		}
 
+		r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 		hBody = utils.GetMD5Hash(bodyBytes)
 		log.Log(fmt.Sprintf("body: %s", bodyBytes))
 	}
 
 	key := fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody)
 
-	return key
+	return utils.GetMD5Hash([]byte(key)), nil
 }
 
 func (c *Cache) logError(err error) {
@@ -107,7 +124,7 @@ func (c *Cache) logError(err error) {
 
 		params := url.Values{}
 		params.Add("chat_id", telegram.ChatID)
-		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin] \n%s", os.Getenv("APPLICATION_ENV"), err.Error()))
+		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin] \n%s", c.config.ENV, err.Error()))
 		params.Add("parse_mode", "HTML")
 
 		http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
@@ -117,13 +134,26 @@ func (c *Cache) logError(err error) {
 }
 
 func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	key := c.key(req)
-	cs := constants.MissCacheStatus
+	key, err := c.key(req)
+	if err != nil {
+		c.logError(fmt.Errorf("Build key memcached error: %v", err))
+
+		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
+
+		c.next.ServeHTTP(rw, req)
+
+		return
+	}
 
 	value, err := c.cacheRepo.Get(key)
 	if err != nil {
-		cs = constants.ErrorCacheStatus
 		c.logError(err)
+
+		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
+
+		c.next.ServeHTTP(rw, req)
+
+		return
 	}
 
 	if value != nil {
@@ -133,15 +163,17 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		rw.Header().Set(cacheHeader, string(constants.HitCacheStatus))
-		rw.Header().Set("debug", fmt.Sprintf("time: %s", time.Now().String()))
-
+		rw.Header().Set(CACHE_HEADER, string(constants.HitCacheStatus))
+		rw.Header().Set("debug", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
 		rw.WriteHeader(value.Status)
-		_, err = rw.Write(value.Body)
+
+		if _, err := rw.Write(value.Body); err != nil {
+			c.logError(fmt.Errorf("Write data from cache to response body error: %v", err))
+		}
 		return
 	}
 
-	rw.Header().Set(cacheHeader, string(cs))
+	rw.Header().Set(CACHE_HEADER, string(constants.MissCacheStatus))
 
 	r := &ResponseWriter{ResponseWriter: rw}
 
