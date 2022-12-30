@@ -28,6 +28,7 @@ var (
 const (
 	CACHE_HEADER = "Cache-Status"
 	MASTER_ENV   = "master"
+	DEV_ENV      = "dev"
 )
 
 func CreateConfig() *model.Config {
@@ -86,7 +87,6 @@ func (c *Cache) key(r *http.Request) (string, error) {
 			}
 
 			hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", rawHeader)))
-			log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", rawHeader)))
 		} else {
 			if hashKey.Header.IgnoreFields != "" {
 				ignoreHeaderFields = strings.Split(hashKey.Header.IgnoreFields, ",")
@@ -97,7 +97,6 @@ func (c *Cache) key(r *http.Request) (string, error) {
 			}
 
 			hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", h)))
-			log.Log(fmt.Sprintf("header: %s", fmt.Sprintf("%+v", h)))
 		}
 	}
 
@@ -110,7 +109,6 @@ func (c *Cache) key(r *http.Request) (string, error) {
 
 		r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 		hBody = utils.GetMD5Hash(bodyBytes)
-		log.Log(fmt.Sprintf("body: %s", bodyBytes))
 	}
 
 	key := fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody)
@@ -164,7 +162,9 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		rw.Header().Set(CACHE_HEADER, string(constants.HitCacheStatus))
-		rw.Header().Set("debug", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
+		if c.config.ENV == DEV_ENV {
+			rw.Header().Set("debug-cache-traefik", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
+		}
 		rw.WriteHeader(value.Status)
 
 		if _, err := rw.Write(value.Body); err != nil {
