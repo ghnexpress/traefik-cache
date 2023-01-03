@@ -33,5 +33,5 @@ type Config struct {
 	Memcached MemcachedConfig `json:"memcached,omitempty"`
 	HashKey   HashKey         `json:"hashkey,omitempty"`
 	Alert     AlertConfig     `json:"alert,omitempty"`
-	ENV       string          `json:"env,omitempty"`
+	Env       string          `json:"env,omitempty"`
 }

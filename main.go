@@ -10,14 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/ghnexpress/traefik-cache/constants"
 	"github.com/ghnexpress/traefik-cache/log"
 	"github.com/ghnexpress/traefik-cache/model"
 	"github.com/ghnexpress/traefik-cache/repo"
 	"github.com/ghnexpress/traefik-cache/utils"
 	"github.com/pquerna/cachecontrol"
-
-	"github.com/bradfitz/gomemcache/memcache"
 )
 
 var (
@@ -26,20 +25,17 @@ var (
 )
 
 const (
-	CACHE_HEADER = "Cache-Status"
-	MASTER_ENV   = "master"
-	DEV_ENV      = "dev"
+	X_REQUEST_ID_HEADER = "X-Request-Id"
+	CACHE_HEADER        = "cache-status"
+	MASTER_ENV          = "master"
+	DEV_ENV             = "dev"
 )
 
 func CreateConfig() *model.Config {
 	return &model.Config{
 		Memcached: model.MemcachedConfig{},
-		HashKey: model.HashKey{
-			Method: model.Enable{
-				Enable: true,
-			},
-		},
-		ENV: MASTER_ENV,
+		HashKey:   model.HashKey{Method: model.Enable{Enable: true}},
+		Env:       MASTER_ENV,
 	}
 }
 
@@ -51,7 +47,7 @@ type Cache struct {
 }
 
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
-	log.Log(fmt.Sprintf("config: %+v", *config))
+	log.Log("", fmt.Sprintf("config: %+v", *config))
 
 	if cacheRepo == nil {
 		client := memcache.New(config.Memcached.Address)
@@ -86,7 +82,7 @@ func (c *Cache) key(r *http.Request) (string, error) {
 				rawHeader = fmt.Sprintf("%s|%s", rawHeader, h.Get(field))
 			}
 
-			hHeader = utils.GetMD5Hash([]byte(fmt.Sprintf("%+v", rawHeader)))
+			hHeader = utils.GetMD5Hash([]byte(rawHeader))
 		} else {
 			if hashKey.Header.IgnoreFields != "" {
 				ignoreHeaderFields = strings.Split(hashKey.Header.IgnoreFields, ",")
@@ -111,43 +107,43 @@ func (c *Cache) key(r *http.Request) (string, error) {
 		hBody = utils.GetMD5Hash(bodyBytes)
 	}
 
-	key := fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody)
-
-	return utils.GetMD5Hash([]byte(key)), nil
+	return utils.GetMD5Hash([]byte(fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody))), nil
 }
 
-func (c *Cache) logError(err error) {
+func (c *Cache) logError(requestID string, err error) {
 	if c.config.Alert.Telegram != nil {
 		telegram := c.config.Alert.Telegram
 
 		params := url.Values{}
 		params.Add("chat_id", telegram.ChatID)
-		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin] \n%s", c.config.ENV, err.Error()))
+		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin]\nRequestID: %s\n%s", c.config.Env, requestID, err.Error()))
 		params.Add("parse_mode", "HTML")
 
 		rs, errGet := http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
 		if errGet != nil {
-			log.Log(errGet.Error())
+			log.Log(requestID, errGet.Error())
 		}
 
 		if rs.StatusCode != 200 {
 			body, errRead := ioutil.ReadAll(rs.Body)
 			if errRead != nil {
-				log.Log(errRead.Error())
+				log.Log(requestID, errRead.Error())
 			}
-			rs.Body.Close()
 
-			log.Log(string(body))
+			rs.Body.Close()
+			log.Log(requestID, string(body))
 		}
 	}
 
-	log.Log(err.Error())
+	log.Log(requestID, err.Error())
 }
 
 func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	requestID := req.Header.Get(X_REQUEST_ID_HEADER)
+
 	key, err := c.key(req)
 	if err != nil {
-		c.logError(fmt.Errorf("Build key memcached error: %v", err))
+		c.logError(requestID, fmt.Errorf("Build key memcached error: %v", err))
 
 		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
 
@@ -158,7 +154,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	value, err := c.cacheRepo.Get(key)
 	if err != nil {
-		c.logError(err)
+		c.logError(requestID, err)
 
 		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
 
@@ -175,16 +171,16 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		rw.Header().Set(CACHE_HEADER, string(constants.HitCacheStatus))
-		if c.config.ENV == DEV_ENV {
+		if c.config.Env == DEV_ENV {
 			rw.Header().Set("debug-cache-traefik", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
 		}
 		rw.WriteHeader(value.Status)
 
 		if _, err := rw.Write(value.Body); err != nil {
-			c.logError(fmt.Errorf("Write data from cache to response body error: %v", err))
+			c.logError(requestID, fmt.Errorf("Write data from cache to response body error: %v", err))
 
 			if err := c.cacheRepo.Delete(key); err != nil {
-				c.logError(err)
+				c.logError(requestID, err)
 			}
 		}
 		return
@@ -204,7 +200,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		})
 
 		if err != nil {
-			c.logError(err)
+			c.logError(requestID, err)
 		}
 	}
 }

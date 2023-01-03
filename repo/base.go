@@ -24,7 +24,7 @@ func NewRepoManager(db memcache.Client) Repository {
 	// 	return nil
 	// }
 
-	log.Log("Memcached connected!")
+	log.Log("", "Memcached connected!")
 
 	return &repoManager{db: db}
 }
