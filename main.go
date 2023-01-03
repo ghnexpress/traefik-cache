@@ -125,7 +125,20 @@ func (c *Cache) logError(err error) {
 		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin] \n%s", c.config.ENV, err.Error()))
 		params.Add("parse_mode", "HTML")
 
-		http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
+		rs, errGet := http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
+		if errGet != nil {
+			log.Log(errGet.Error())
+		}
+
+		if rs.StatusCode != 200 {
+			body, errRead := ioutil.ReadAll(rs.Body)
+			if errRead != nil {
+				log.Log(errRead.Error())
+			}
+			rs.Body.Close()
+
+			log.Log(string(body))
+		}
 	}
 
 	log.Log(err.Error())
@@ -169,6 +182,10 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		if _, err := rw.Write(value.Body); err != nil {
 			c.logError(fmt.Errorf("Write data from cache to response body error: %v", err))
+
+			if err := c.cacheRepo.Delete(key); err != nil {
+				c.logError(err)
+			}
 		}
 		return
 	}

@@ -11,6 +11,7 @@ import (
 type Repository interface {
 	SetExpires(string, time.Time, model.Cache) error
 	Get(string) (*model.Cache, error)
+	Delete(string) error
 }
 
 type repoManager struct {
