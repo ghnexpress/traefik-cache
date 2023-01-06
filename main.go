@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	cacheRepo          *repo.Repository
-	ignoreHeaderFields = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
+	cacheRepo           *repo.Repository
+	defaultForceExpired = 60 * 60
+	ignoreHeaderFields  = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
 )
 
 const (
@@ -192,7 +193,17 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	c.next.ServeHTTP(r, req)
 
-	if expiredTime, ok := c.cacheable(req, rw, r.status); ok {
+	force := c.config.ForceCache
+	ok := force.Enable
+	expiredTime := time.Now().Add(time.Second * time.Duration(force.ExpiredTime))
+	if ok && force.ExpiredTime <= 0 {
+		expiredTime = time.Now().Add(time.Second * time.Duration(defaultForceExpired))
+	}
+	if !ok {
+		expiredTime, ok = c.cacheable(req, rw, r.status)
+	}
+
+	if ok {
 		err = c.cacheRepo.SetExpires(key, expiredTime, model.Cache{
 			Status:  r.status,
 			Headers: r.Header(),

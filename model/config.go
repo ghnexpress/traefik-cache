@@ -29,9 +29,15 @@ type AlertConfig struct {
 	Telegram *TelegramConfig `json:"telegram,omitempty"`
 }
 
+type ForceCache struct {
+	Enable      bool `json:"enable,omitempty"`
+	ExpiredTime int  `json:"expiredTime,omitempty"`
+}
+
 type Config struct {
-	Memcached MemcachedConfig `json:"memcached,omitempty"`
-	HashKey   HashKey         `json:"hashkey,omitempty"`
-	Alert     AlertConfig     `json:"alert,omitempty"`
-	Env       string          `json:"env,omitempty"`
+	Memcached  MemcachedConfig `json:"memcached,omitempty"`
+	HashKey    HashKey         `json:"hashkey,omitempty"`
+	Alert      AlertConfig     `json:"alert,omitempty"`
+	ForceCache ForceCache      `json:"forceCache,omitempty"`
+	Env        string          `json:"env,omitempty"`
 }
