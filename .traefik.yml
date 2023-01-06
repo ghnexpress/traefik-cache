@@ -35,3 +35,6 @@ testData:
       chatId: -795576798
       token: xxx
   env: dev
+  forceCache:
+    enable: true
+    expiredTime: 100 #second

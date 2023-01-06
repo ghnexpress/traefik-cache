@@ -64,6 +64,9 @@ services:
       - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.alert.telegram.chatId=-795576798
       - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.alert.telegram.token=xxx
       - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.env=dev
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.forceCache.enable=true
+      - traefik.http.middlewares.my-plugindemo.plugin.plugindemo.forceCache.expiredTime=10
+
   whoami:
     image: traefik/whoami
     container_name: simple-service
@@ -109,5 +112,9 @@ spec:
         telegram:
           chatId: -795576798
           token: xxx
+      env: dev
+      forceCache:
+        enable: true
+        expiredTime: 100 #second
 ```
 
