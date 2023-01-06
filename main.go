@@ -21,6 +21,7 @@ import (
 
 var (
 	cacheRepo           *repo.Repository
+	memcachedAddr       string
 	defaultForceExpired = 60 * 60
 	ignoreHeaderFields  = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
 )
@@ -50,10 +51,11 @@ type Cache struct {
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
 	log.Log("", fmt.Sprintf("config: %+v", *config))
 
-	if cacheRepo == nil {
+	if cacheRepo == nil || config.Memcached.Address != memcachedAddr {
 		client := memcache.New(config.Memcached.Address)
 		repoManager := repo.NewRepoManager(*client)
 		cacheRepo = &repoManager
+		memcachedAddr = config.Memcached.Address
 	}
 
 	return &Cache{
