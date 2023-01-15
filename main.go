@@ -177,8 +177,11 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if c.config.Env == DEV_ENV {
 			rw.Header().Set("debug-cache-traefik", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
 		}
-		rw.WriteHeader(value.Status)
 
+		rw.Header().Del("Content-Encoding")
+		rw.Header().Del("Vary")
+
+		rw.WriteHeader(value.Status)
 		if _, err := rw.Write(value.Body); err != nil {
 			c.logError(requestID, fmt.Errorf("Write data from cache to response body error: %v", err))
 
