@@ -1,7 +1,9 @@
 package model
 
 type MemcachedConfig struct {
-	Address string `json:"address,omitempty"`
+	Address           string `json:"address,omitempty"`
+	Timeout           int    `json:"timeout,omitempty"`
+	MaxIdleConnection int    `json:"maxIdleConnection,omitempty"`
 }
 
 type Enable struct {
@@ -20,13 +22,13 @@ type HashKey struct {
 	Body   Enable        `json:"body,omitempty"`
 }
 
-type TelegramConfig struct {
+type Telegram struct {
 	ChatID string `json:"chatId,omitempty"`
 	Token  string `json:"token,omitempty"`
 }
 
 type AlertConfig struct {
-	Telegram *TelegramConfig `json:"telegram,omitempty"`
+	Telegram Telegram `json:"telegram,omitempty"`
 }
 
 type ForceCache struct {

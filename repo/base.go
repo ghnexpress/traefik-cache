@@ -1,10 +1,11 @@
 package repo
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/ghnexpress/traefik-cache/log"
 	"github.com/ghnexpress/traefik-cache/model"
 )
 
@@ -18,13 +19,18 @@ type repoManager struct {
 	db memcache.Client
 }
 
-func NewRepoManager(db memcache.Client) Repository {
-	// if err := db.Ping(); err != nil {
-	// 	log.Log(fmt.Sprintf("Could not ping to memcached: %v", err))
-	// 	return nil
-	// }
+func NewRepoManager(cfg model.MemcachedConfig) Repository {
+	client := memcache.New(cfg.Address)
 
-	log.Log("", "Memcached connected!")
+	if cfg.MaxIdleConnection > 0 {
+		client.MaxIdleConns = cfg.MaxIdleConnection
+	}
 
-	return &repoManager{db: db}
+	if cfg.Timeout > 0 {
+		client.Timeout = time.Duration(cfg.Timeout) * time.Second
+	}
+
+	os.Stdout.WriteString(fmt.Sprintf("[cache-middleware-plugin] [memcached] Memcached connected, config: %+v\n", client))
+
+	return &repoManager{db: *client}
 }

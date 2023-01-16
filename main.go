@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/ghnexpress/traefik-cache/constants"
 	"github.com/ghnexpress/traefik-cache/log"
 	"github.com/ghnexpress/traefik-cache/model"
@@ -20,8 +19,9 @@ import (
 )
 
 var (
-	cacheRepo           *repo.Repository
-	memcachedAddr       string
+	cacheRepo           repo.Repository
+	onceMemcached       = make(map[string]*sync.Once)
+	onceMemcachedMutex  = sync.RWMutex{}
 	defaultForceExpired = 60 * 60
 	ignoreHeaderFields  = []string{"X-Request-Id", "Postman-Token", "Content-Length"}
 )
@@ -44,25 +44,32 @@ func CreateConfig() *model.Config {
 type Cache struct {
 	name      string
 	next      http.Handler
+	log       log.Log
 	config    model.Config
 	cacheRepo repo.Repository
 }
 
 func New(_ context.Context, next http.Handler, config *model.Config, name string) (http.Handler, error) {
-	log.Log("", fmt.Sprintf("config: %+v", *config))
+	log := log.New(config.Env, config.Alert.Telegram)
+	log.ConsoleLog("config", config)
 
-	if cacheRepo == nil || config.Memcached.Address != memcachedAddr {
-		client := memcache.New(config.Memcached.Address)
-		repoManager := repo.NewRepoManager(*client)
-		cacheRepo = &repoManager
-		memcachedAddr = config.Memcached.Address
+	onceMemcachedMutex.Lock()
+	onceKey := fmt.Sprintf("%+v", config.Memcached)
+	if onceMemcached[onceKey] == nil {
+		onceMemcached[onceKey] = &sync.Once{}
 	}
+
+	onceMemcached[onceKey].Do(func() {
+		cacheRepo = repo.NewRepoManager(config.Memcached)
+	})
+	onceMemcachedMutex.Unlock()
 
 	return &Cache{
 		name:      name,
 		next:      next,
+		log:       log,
 		config:    *config,
-		cacheRepo: *cacheRepo,
+		cacheRepo: cacheRepo,
 	}, nil
 }
 
@@ -113,40 +120,12 @@ func (c *Cache) key(r *http.Request) (string, error) {
 	return utils.GetMD5Hash([]byte(fmt.Sprintf("%s%s|%s|%s|%s", r.Host, r.URL.String(), hMethod, hHeader, hBody))), nil
 }
 
-func (c *Cache) logError(requestID string, err error) {
-	if c.config.Alert.Telegram != nil {
-		telegram := c.config.Alert.Telegram
-
-		params := url.Values{}
-		params.Add("chat_id", telegram.ChatID)
-		params.Add("text", fmt.Sprintf("[%s][cache-middleware-plugin]\nRequestID: %s\n%s", c.config.Env, requestID, err.Error()))
-		params.Add("parse_mode", "HTML")
-
-		rs, errGet := http.Get(fmt.Sprintf("https://api.telegram.org/%s/sendMessage?%s", telegram.Token, params.Encode()))
-		if errGet != nil {
-			log.Log(requestID, errGet.Error())
-		}
-
-		if rs.StatusCode != 200 {
-			body, errRead := ioutil.ReadAll(rs.Body)
-			if errRead != nil {
-				log.Log(requestID, errRead.Error())
-			}
-
-			rs.Body.Close()
-			log.Log(requestID, string(body))
-		}
-	}
-
-	log.Log(requestID, err.Error())
-}
-
 func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	requestID := req.Header.Get(X_REQUEST_ID_HEADER)
 
 	key, err := c.key(req)
 	if err != nil {
-		c.logError(requestID, fmt.Errorf("Build key memcached error: %v", err))
+		c.log.TelegramLog(requestID, fmt.Errorf("Build key memcached error: %v", err))
 
 		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
 
@@ -157,7 +136,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	value, err := c.cacheRepo.Get(key)
 	if err != nil {
-		c.logError(requestID, err)
+		c.log.TelegramLog(requestID, err)
 
 		rw.Header().Set(CACHE_HEADER, string(constants.ErrorCacheStatus))
 
@@ -178,21 +157,19 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("debug-cache-traefik", fmt.Sprintf("time: %s, key: %s", time.Now().Format(time.RFC3339), key))
 		}
 
-		rw.Header().Del("Content-Encoding")
-		rw.Header().Del("Vary")
-
 		rw.WriteHeader(value.Status)
 		if _, err := rw.Write(value.Body); err != nil {
-			c.logError(requestID, fmt.Errorf("Write data from cache to response body error: %v", err))
+			c.log.TelegramLog(requestID, fmt.Errorf("Write data from cache to response body error: %v", err))
 
 			if err := c.cacheRepo.Delete(key); err != nil {
-				c.logError(requestID, err)
+				c.log.TelegramLog(requestID, err)
 			}
 		}
 		return
 	}
 
 	rw.Header().Set(CACHE_HEADER, string(constants.MissCacheStatus))
+	checkCompress := rw.Header().Get("Vary")
 
 	r := &ResponseWriter{ResponseWriter: rw}
 
@@ -209,6 +186,12 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if ok {
+		// Router --> Compress Middleware --> Cache Middleware --> Service
+		if checkCompress != "" {
+			r.Header().Del("Content-Encoding")
+			r.Header().Del("Vary")
+		}
+
 		err = c.cacheRepo.SetExpires(key, expiredTime, model.Cache{
 			Status:  r.status,
 			Headers: r.Header(),
@@ -216,7 +199,7 @@ func (c *Cache) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		})
 
 		if err != nil {
-			c.logError(requestID, err)
+			c.log.TelegramLog(requestID, err)
 		}
 	}
 }
